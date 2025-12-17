@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rewards Optimizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Rewards Optimizer</h1>
+  <p>
+    Enter brand and amount, then compare all active payment methods.
+    All logic runs in your browser; nothing is sent to any server.
+  </p>
+
+  <!-- Transaction input -->
+  <section class="card">
+    <h2>1. Transaction details</h2>
+    <label>
+      Brand / merchant:
+      <input id="brandInput" type="text" placeholder="e.g. Swiggy, Amazon" />
+    </label>
+    <label>
+      Amount (₹):
+      <input id="amountInput" type="number" min="0" step="1" />
+    </label>
+    <button id="calculateBtn">Calculate best options</button>
+  </section>
+
+  <!-- Results -->
+  <section class="card">
+    <h2>2. Recommendation</h2>
+    <div id="resultsArea">
+      <p>Enter amount and click "Calculate" to see results.</p>
+    </div>
+  </section>
+
+  <!-- Methods config -->
+  <section class="card">
+    <h2>3. Payment methods & caps</h2>
+    <p>
+      Edit reward %, caps and usage below. Changes are saved automatically
+      in your browser using localStorage. [web:554][web:558]
+    </p>
+    <div id="methodsTableContainer"></div>
+  </section>
+
+  <section class="card">
+    <h2>4. Notes</h2>
+    <ul>
+      <li>
+        "Effective reward %" = voucher discount + portal reward +
+        card reward + float benefit (if any).
+      </li>
+      <li>
+        Monthly cap is the max reward value (₹) you can earn on that
+        method per cycle; usage is how much you have already used.
+      </li>
+      <li>
+        For now Amex PT and Marriott HDFC are present but disabled.
+        After you get them, just tick "Active" and adjust the numbers.
+      </li>
+    </ul>
+  </section>
+
+  <script src="script.js"></script>
+</body>
+</html>
