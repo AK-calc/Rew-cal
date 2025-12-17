@@ -229,11 +229,13 @@ button {
 
 /* Different background per bank */
 .card-tile.sbi-card {
-  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  /* Dark green feel for SimplyCLICK */
+  background: linear-gradient(135deg, #14532d, #166534);
 }
 
 .card-tile.kiwi-card {
-  background: linear-gradient(135deg, #047857, #10b981);
+  /* Lighter / neon green for Kiwi */
+  background: linear-gradient(135deg, #22c55e, #4ade80);
 }
 
 /* Top row */
@@ -306,6 +308,22 @@ button {
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.35);
   overflow: hidden;
+}
+
+/* 30% comfort marker */
+.util-marker {
+  position: absolute;
+  top: -1px;
+  width: 2px;
+  height: 10px;
+  background: rgba(249, 250, 251, 0.9);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.util-marker-30 {
+  left: 30%;
+  transform: translateX(-50%);
 }
 
 .util-bar-fill {

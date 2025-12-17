@@ -21,7 +21,7 @@ const defaultState = {
     sbi: {
       holderName: "YOUR NAME",
       last4: "1234",
-      network: "VISA",
+      network: "MASTERCARD",
       limit: 252000,
       comfortPercent: 30,
       cycleSpendUsed: 0
@@ -92,7 +92,7 @@ let resultsContainer;
 // Render methods table in main view
 function renderMethodsTable() {
   methodsTbody.innerHTML = "";
-  appState.methods.forEach((m, index) => {
+  appState.methods.forEach((m) => {
     const tr = document.createElement("tr");
 
     // Active toggle
@@ -265,8 +265,7 @@ function applyRewardCap(m, effectivePercent, amount) {
   }
 
   // Partially capped: some of the reward is at full %, rest at 0
-  const rewardedAmount = (remainingCap * 100) / effectivePercent;
-  const blendedReward = remainingCap; // rest earns 0 from this method's reward component
+  const blendedReward = remainingCap;
   const blendedPercent = (blendedReward / amount) * 100;
 
   return { effectivePercent: blendedPercent, capped: false, partiallyCapped: true };
@@ -317,8 +316,8 @@ function calculateOptions() {
     const card = appState.cards[m.cardKey];
     if (!card) return;
 
-    const voucher = (vp[m.id]?.voucher || 0);
-    const portal = (vp[m.id]?.portal || 0);
+    const voucher = vp[m.id]?.voucher || 0;
+    const portal = vp[m.id]?.portal || 0;
 
     let cardPercent;
     if (m.id === "kiwi_neon_upi") {
@@ -465,7 +464,7 @@ function renderCardTiles() {
   const sbi = appState.cards.sbi;
   const kiwi = appState.cards.kiwi;
 
-  // Shared holder name: from SBI, fallback KIWI
+  // Holder names for tiles
   const holderSbi = document.getElementById("advCardholderNameSbi").value || sbi.holderName;
   const holderKiwi =
     document.getElementById("advCardholderNameKiwi").value || kiwi.holderName;
@@ -532,7 +531,7 @@ function saveAdvancedFromInputs() {
   sbi.holderName = document.getElementById("advCardholderNameSbi").value || sbi.holderName;
   sbi.last4 = document.getElementById("advLast4Sbi").value || sbi.last4;
   sbi.network =
-    document.getElementById("advNetworkSbi").value || sbi.network || "VISA";
+    document.getElementById("advNetworkSbi").value || sbi.network || "MASTERCARD";
   sbi.limit = Number(document.getElementById("advLimitSbi").value) || sbi.limit;
   sbi.comfortPercent =
     Number(document.getElementById("advComfortSbi").value) || sbi.comfortPercent;
