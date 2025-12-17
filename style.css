@@ -27,33 +27,74 @@ input[type="text"],
 input[type="number"] {
   width: 240px;
   max-width: 100%;
-  padding: 0.3rem;
+  padding: 0.3rem 0.4rem;
   margin-left: 0.3rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
 }
 
+/* Primary buttons (including Calculate) */
 button {
   margin-top: 0.5rem;
-  padding: 0.4rem 0.8rem;
+  padding: 0.45rem 0.9rem;
   cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
 
+button:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+/* "I used this" buttons in results – make them a bit calmer */
+#resultsArea button {
+  margin-top: 0.25rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid #16a34a;
+  background: #16a34a;
+  color: #ffffff;
+}
+
+#resultsArea button:hover {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+/* Methods table styling */
 .methods-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .methods-table th,
 .methods-table td {
   border: 1px solid #ddd;
-  padding: 0.3rem;
+  padding: 0.25rem 0.35rem;
   text-align: center;
 }
 
 .methods-table th {
   background: #f0f0f0;
+  font-weight: 600;
 }
 
+/* Make number inputs in the table smaller so it fits better */
+.methods-table input[type="number"] {
+  width: 70px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.8rem;
+}
+
+/* Warnings and small text */
 .warning {
   color: #c0392b;
   font-weight: bold;

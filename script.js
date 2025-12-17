@@ -1,91 +1,98 @@
-// Simple rewards optimizer for your use case.
-// All data is stored in localStorage under the key "rewardMethods". [web:554][web:558]
+// Rewards Optimizer v2
+// - Kiwi Neon milestone-aware, back-loaded planning
+// - SBI SimplyCLICK 10X / 5X / 1X routes
+// - Per-method monthly cap tracking with "I used this" button
+// All persistent data stored in localStorage. [web:554][web:567]
 
-const STORAGE_KEY = "rewardMethods_v1";
+const METHODS_KEY = "rewardMethods_v2";
+const STATE_KEY = "rewardAppState_v1";
 
-// --- Default methods (you can tweak values in the UI) ---
+// --- Default methods (routes) ---
+// Card % is fixed per route except Kiwi Neon, which is dynamic.
 const defaultMethods = [
   {
-    id: "kiwi_upi",
-    name: "Kiwi UPI (direct)",
+    id: "kiwi_neon",
+    name: "Kiwi UPI (Neon) – eligible spends",
     active: true,
-    type: "upi",
-    // Percentages as numbers, e.g. 3 means 3%
-    voucherDiscountPct: 0,        // usually 0 for direct UPI
+    type: "kiwi_neon",
+    // You normally won't change these per transaction:
+    voucherDiscountPct: 0,
     extraPortalRewardPct: 0,
-    cardRewardPct: 3,             // e.g. 3% effective on eligible spends
+    cardRewardPct: 0, // computed dynamically
     floatBenefitPct: 0,
-    monthlyCapValue: 1000,        // ₹ max cashback per month (adjust)
-    usedRewardThisCycle: 0,       // ₹ used so far (edit in UI)
-    utilisationLimitPct: 30,      // e.g. 30% of credit limit comfort
-    currentUtilisationPct: 15     // your current approx utilisation
+    // Approx monthly cashback cap ≈ 2% of 91,000 limit ≈ 1,800. Adjust if real data differs. [web:392][web:698]
+    monthlyCapValue: 1800,
+    utilisationLimitPct: 30,
+    currentUtilisationPct: 15
   },
   {
-    id: "sbi_gyftr",
-    name: "SBI SimplyCLICK + SBI GyFTR",
+    id: "sbi_10x_online",
+    name: "SBI SimplyCLICK – 10X online / SimplyCLICK GyFTR",
     active: true,
-    type: "card+portal",
-    voucherDiscountPct: 5,        // typical GyFTR discount (edit per brand)
+    type: "sbi_10x",
+    voucherDiscountPct: 0,
     extraPortalRewardPct: 0,
-    cardRewardPct: 4,             // your % value for SimplyCLICK points
+    // 10 RP/₹100, 1 RP ≈ ₹0.25 → 2.5% effective. [web:742][web:749]
+    cardRewardPct: 2.5,
     floatBenefitPct: 0,
-    monthlyCapValue: 3000,        // optional cap you track
-    usedRewardThisCycle: 0,
-    utilisationLimitPct: 50,
-    currentUtilisationPct: 20
+    // 10,000 bonus RPs/month ≈ ₹2,500 value (approx cap for 10X bucket). [web:616][web:744][web:749]
+    monthlyCapValue: 2500,
+    utilisationLimitPct: 30,
+    currentUtilisationPct: 10
   },
   {
-    id: "generic_gyftr_upi",
-    name: "Generic GyFTR + UPI",
+    id: "sbi_5x_online",
+    name: "SBI SimplyCLICK – 5X other online (incl. SBI Card GyFTR)",
     active: true,
-    type: "portal+upi",
-    voucherDiscountPct: 3,        // typical generic discount
+    type: "sbi_5x",
+    voucherDiscountPct: 0,
     extraPortalRewardPct: 0,
-    cardRewardPct: 2,             // assume ~2% via Kiwi/bank UPI if rewarded
+    // 5 RP/₹100 → 1.25% effective. [web:742][web:749]
+    cardRewardPct: 1.25,
     floatBenefitPct: 0,
-    monthlyCapValue: 2000,
-    usedRewardThisCycle: 0,
-    utilisationLimitPct: 50,
-    currentUtilisationPct: 20
+    // 10,000 bonus RPs/month ≈ ₹2,500 for 5X bucket. [web:616][web:744][web:749]
+    monthlyCapValue: 2500,
+    utilisationLimitPct: 30,
+    currentUtilisationPct: 10
   },
   {
-    id: "amex_rm",
-    name: "Amex PT + Reward Multiplier (future)",
-    active: false,                // disabled until you get the card
-    type: "card+portal",
-    voucherDiscountPct: 4,        // sample; tweak later
+    id: "sbi_1x_offline",
+    name: "SBI SimplyCLICK – 1X offline / other",
+    active: true,
+    type: "sbi_1x",
+    voucherDiscountPct: 0,
     extraPortalRewardPct: 0,
-    cardRewardPct: 6,             // includes 3X MR + milestone value per ₹
+    // 1 RP/₹100 → 0.25%. [web:744][web:749]
+    cardRewardPct: 0.25,
     floatBenefitPct: 0,
-    monthlyCapValue: 4000,
-    usedRewardThisCycle: 0,
-    utilisationLimitPct: 50,
-    currentUtilisationPct: 0
-  },
-  {
-    id: "marriott_smartbuy",
-    name: "Marriott HDFC + SmartBuy (future)",
-    active: false,                // disabled until you get the card
-    type: "card+portal",
-    voucherDiscountPct: 5,        // sample discount; tweak later
-    extraPortalRewardPct: 0,
-    cardRewardPct: 5,             // your % valuation of Bonvoy + SmartBuy
-    floatBenefitPct: 0,
-    monthlyCapValue: 4000,
-    usedRewardThisCycle: 0,
-    utilisationLimitPct: 50,
-    currentUtilisationPct: 0
+    monthlyCapValue: 0, // no practical cap
+    utilisationLimitPct: 30,
+    currentUtilisationPct: 10
   }
+  // Future routes (Amex PT, Marriott HDFC etc.) can be added later with active:false.
 ];
 
-// --- Helpers to load/save methods from localStorage ---
+// --- Global app state (caps, Kiwi Neon, etc.) ---
+const defaultState = {
+  // Per-method monthly reward usage in ₹ (against monthlyCapValue)
+  methodRewardUsed: {},
+
+  // Kiwi Neon planning
+  neonYearStart: "2025-08-02", // your Neon start date [web:704][memory:734]
+  kiwiNeonTargetAnnualSpend: 150000, // ₹1.5L target
+  kiwiNeonYtdSpend: 94644, // starting from your current eligible Neon spends [memory:734]
+
+  // For resetting monthly caps
+  lastMonthKey: null
+};
+
+// --- localStorage helpers --- [web:554][web:567]
 
 function loadMethods() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(METHODS_KEY);
     if (!raw) return defaultMethods;
     const parsed = JSON.parse(raw);
-    // Basic safety: fall back if shape looks wrong
     if (!Array.isArray(parsed)) return defaultMethods;
     return parsed;
   } catch (e) {
@@ -96,15 +103,74 @@ function loadMethods() {
 
 function saveMethods(methods) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(methods));
+    localStorage.setItem(METHODS_KEY, JSON.stringify(methods));
   } catch (e) {
     console.warn("Failed to save methods", e);
   }
 }
 
-// --- UI rendering for methods table ---
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return { ...defaultState };
+    const parsed = JSON.parse(raw);
+    return { ...defaultState, ...parsed };
+  } catch (e) {
+    console.warn("Failed to load state, using defaults", e);
+    return { ...defaultState };
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+  } catch (e) {
+    console.warn("Failed to save state", e);
+  }
+}
+
+// --- Month / Neon-year resets ---
+
+function getCurrentMonthKey() {
+  const now = new Date();
+  return now.getFullYear() + "-" + (now.getMonth() + 1);
+}
+
+function ensureMonthlyReset() {
+  const currentKey = getCurrentMonthKey();
+  if (appState.lastMonthKey !== currentKey) {
+    // New month → reset per-method monthly reward usage
+    appState.methodRewardUsed = {};
+    appState.lastMonthKey = currentKey;
+    saveState();
+  }
+}
+
+function ensureNeonYearRollover() {
+  const start = new Date(appState.neonYearStart || defaultState.neonYearStart);
+  const now = new Date();
+  const nextStart = new Date(start.getTime());
+  nextStart.setFullYear(start.getFullYear() + 1);
+
+  if (now >= nextStart) {
+    // Start a new Neon year from this year's same date
+    const newStart = new Date(nextStart.getFullYear(), start.getMonth(), start.getDate());
+    appState.neonYearStart = newStart.toISOString().slice(0, 10);
+    appState.kiwiNeonYtdSpend = 0;
+    saveState();
+  }
+}
+
+// --- In-memory data ---
 
 let methods = loadMethods();
+let appState = loadState();
+ensureMonthlyReset();
+ensureNeonYearRollover();
+
+let lastResults = [];
+
+// --- Methods table (settings) UI ---
 
 function renderMethodsTable() {
   const container = document.getElementById("methodsTableContainer");
@@ -122,7 +188,6 @@ function renderMethodsTable() {
     <th>Card %</th>
     <th>Float %</th>
     <th>Monthly cap (₹)</th>
-    <th>Used this cycle (₹)</th>
     <th>Util. limit %</th>
     <th>Current util. %</th>
   `;
@@ -154,7 +219,7 @@ function renderMethodsTable() {
       const input = document.createElement("input");
       input.type = "number";
       input.step = step;
-      input.value = m[field];
+      input.value = m[field] != null ? m[field] : 0;
       input.addEventListener("change", () => {
         const val = parseFloat(input.value) || 0;
         methods[index][field] = val;
@@ -166,10 +231,12 @@ function renderMethodsTable() {
 
     row.appendChild(makeNumberCell("voucherDiscountPct"));
     row.appendChild(makeNumberCell("extraPortalRewardPct"));
+
+    // Card %: for Kiwi Neon, this is not used but you can override if you want
     row.appendChild(makeNumberCell("cardRewardPct"));
+
     row.appendChild(makeNumberCell("floatBenefitPct"));
     row.appendChild(makeNumberCell("monthlyCapValue", "1"));
-    row.appendChild(makeNumberCell("usedRewardThisCycle", "1"));
     row.appendChild(makeNumberCell("utilisationLimitPct"));
     row.appendChild(makeNumberCell("currentUtilisationPct"));
 
@@ -177,6 +244,50 @@ function renderMethodsTable() {
   });
 
   container.appendChild(table);
+}
+
+// --- Kiwi Neon effective % (with milestone & back-loaded pacing) ---
+
+function computeKiwiEffectivePct(amount) {
+  const baseLow = 2; // post-milestone base on eligible UPI [web:378][web:725]
+  const high = 5;    // effective on first ₹1.5L (2% instant + 3% milestone) [web:378][web:706]
+  const target = appState.kiwiNeonTargetAnnualSpend || 150000;
+  const ytd = appState.kiwiNeonYtdSpend || 0;
+
+  const remainingAtHigh = Math.max(0, target - ytd);
+  let pctBase;
+
+  if (remainingAtHigh <= 0) {
+    pctBase = baseLow;
+  } else if (amount <= remainingAtHigh) {
+    pctBase = high;
+  } else {
+    const partHigh = remainingAtHigh;
+    const partLow = amount - remainingAtHigh;
+    const reward =
+      (high / 100) * partHigh + (baseLow / 100) * partLow;
+    pctBase = (reward / amount) * 100;
+  }
+
+  // Back-loaded pacing: slow early, faster later. [web:730][web:724]
+  const start = new Date(appState.neonYearStart || defaultState.neonYearStart);
+  const now = new Date();
+  const end = new Date(start.getTime());
+  end.setFullYear(start.getFullYear() + 1);
+
+  const totalMs = Math.max(1, end - start);
+  const elapsedMs = Math.min(Math.max(0, now - start), totalMs);
+  const frac = elapsedMs / totalMs; // 0..1
+  const idealYtd = target * (frac * frac); // back-loaded curve
+
+  const tolerance = 0.2; // 20% ahead of ideal allowed before we penalise
+  if (ytd > idealYtd * (1 + tolerance)) {
+    // Ahead of plan: soften Kiwi a bit but never below baseLow
+    const scaled = pctBase * 0.8;
+    pctBase = Math.max(baseLow, scaled);
+  }
+
+  return pctBase;
 }
 
 // --- Core calculation logic ---
@@ -187,36 +298,40 @@ function calculateForAmount(amount, brand) {
   methods.forEach((m) => {
     if (!m.active) return;
 
-    const effectivePct =
-      (m.voucherDiscountPct || 0) +
-      (m.extraPortalRewardPct || 0) +
-      (m.cardRewardPct || 0) +
-      (m.floatBenefitPct || 0);
-
-    if (effectivePct <= 0) return; // skip useless methods
-
-    const potentialReward = (effectivePct / 100) * amount;
-    const cap = m.monthlyCapValue || 0;
-    const used = m.usedRewardThisCycle || 0;
-
-    // Cap handling
-    let capped = false;
-    let effectiveReward = potentialReward;
-
-    if (cap > 0 && used >= cap) {
-      // fully capped, ignore this method
-      return;
-    } else if (cap > 0 && used + potentialReward > cap) {
-      // partially capped: only remaining headroom counts
-      const headroom = cap - used;
-      effectiveReward = headroom;
-      capped = true;
+    // Determine card % for this transaction
+    let cardPct;
+    if (m.type === "kiwi_neon") {
+      cardPct = computeKiwiEffectivePct(amount);
+    } else {
+      cardPct = m.cardRewardPct || 0;
     }
 
-    const effectivePctAfterCap =
-      amount > 0 ? (effectiveReward / amount) * 100 : 0;
+    const voucherPct = m.voucherDiscountPct || 0;
+    const portalPct = m.extraPortalRewardPct || 0;
+    const floatPct = m.floatBenefitPct || 0;
 
-    // Utilisation check (soft warning)
+    const effectivePctRaw = voucherPct + portalPct + cardPct + floatPct;
+    if (effectivePctRaw <= 0) return;
+
+    const cap = m.monthlyCapValue || 0;
+    const used = appState.methodRewardUsed[m.id] || 0;
+    let rewardValue = (effectivePctRaw / 100) * amount;
+    let capped = false;
+
+    if (cap > 0) {
+      const headroom = cap - used;
+      if (headroom <= 0) {
+        // Cap fully used: only discount/portal/float matter, card reward ignored
+        const nonCardPct = voucherPct + portalPct + floatPct;
+        rewardValue = (nonCardPct / 100) * amount;
+        capped = true;
+      } else if (headroom < rewardValue) {
+        rewardValue = headroom;
+        capped = true;
+      }
+    }
+
+    const effectivePct = amount > 0 ? (rewardValue / amount) * 100 : 0;
     const utilisationLimit = m.utilisationLimitPct || 100;
     const currentUtil = m.currentUtilisationPct || 0;
     const utilisationWarning = currentUtil >= utilisationLimit;
@@ -225,22 +340,54 @@ function calculateForAmount(amount, brand) {
       method: m,
       brand,
       amount,
-      effectivePct: effectivePctAfterCap,
-      rewardValue: effectiveReward,
+      rewardValue,
+      effectivePct,
       capped,
       utilisationWarning
     });
   });
 
-  // Sort by reward value (₹) descending
   candidates.sort((a, b) => b.rewardValue - a.rewardValue);
-
+  lastResults = candidates;
   return candidates;
 }
 
 function formatMoney(x) {
   return "₹" + x.toFixed(0);
 }
+
+// --- Mark a result as "used" so caps/milestones update ---
+
+function markResultUsed(index) {
+  if (!lastResults || !lastResults[index]) return;
+  const res = lastResults[index];
+  const m = res.method;
+
+  // Update per-method monthly reward usage
+  const prevUsed = appState.methodRewardUsed[m.id] || 0;
+  appState.methodRewardUsed[m.id] = prevUsed + res.rewardValue;
+
+  // Update Kiwi Neon YTD spend when Kiwi route actually used
+  if (m.type === "kiwi_neon") {
+    appState.kiwiNeonYtdSpend =
+      (appState.kiwiNeonYtdSpend || 0) + res.amount;
+  }
+
+  saveState();
+  renderMethodsTable();
+  // Optional: simple acknowledgement in results
+  const resultsArea = document.getElementById("resultsArea");
+  const note = document.createElement("p");
+  note.className = "small";
+  note.textContent =
+    "Recorded this transaction for caps/milestones. Future calculations will account for it.";
+  resultsArea.appendChild(note);
+}
+
+// expose for inline onclick
+window.markResultUsed = markResultUsed;
+
+// --- Render results UI ---
 
 function renderResults() {
   const brandInput = document.getElementById("brandInput");
@@ -257,7 +404,7 @@ function renderResults() {
 
   const results = calculateForAmount(amount, brand);
 
-  if (results.length === 0) {
+  if (!results || results.length === 0) {
     resultsArea.innerHTML =
       "<p>No active methods with positive reward %. Check your settings.</p>";
     return;
@@ -269,63 +416,43 @@ function renderResults() {
 
   let html = "";
 
-  html += `<p><strong>Best option:</strong><br>
-    ${brand} – ${formatMoney(amount)}<br>
-    Use <strong>${best.method.name}</strong><br>
-    Estimated benefit: <strong>${formatMoney(
-      best.rewardValue
-    )}</strong> (~${best.effectivePct.toFixed(2)}%)`;
-
-  if (best.capped) {
-    html += ` <span class="warning">(partially capped)</span>`;
-  }
-  if (best.utilisationWarning) {
-    html += ` <span class="warning">(utilisation at/above your limit)</span>`;
-  }
-  html += `</p>`;
-
-  if (second) {
-    html += `<p><strong>Next best:</strong><br>
-      Use <strong>${second.method.name}</strong><br>
-      Benefit: ${formatMoney(second.rewardValue)} (~${second.effectivePct.toFixed(
-      2
-    )}%)`;
-    if (second.capped) {
-      html += ` <span class="warning">(partially capped)</span>`;
+  function resultBlock(label, res, idx) {
+    if (!res) return "";
+    let block = `<p><strong>${label}:</strong><br>
+      ${brand} – ${formatMoney(res.amount)}<br>
+      Use <strong>${res.method.name}</strong><br>
+      Estimated benefit: <strong>${formatMoney(
+        res.rewardValue
+      )}</strong> (~${res.effectivePct.toFixed(2)}%)`;
+    if (res.capped) {
+      block += ` <span class="warning">(partially / fully capped)</span>`;
     }
-    if (second.utilisationWarning) {
-      html += ` <span class="warning">(utilisation at/above your limit)</span>`;
+    if (res.utilisationWarning) {
+      block += ` <span class="warning">(utilisation at/above your limit)</span>`;
     }
-    html += `</p>`;
+    block += `<br><button onclick="markResultUsed(${idx})">I used this</button>`;
+    block += `</p>`;
+    return block;
   }
 
-  if (third) {
-    html += `<p><strong>Third option:</strong><br>
-      Use <strong>${third.method.name}</strong><br>
-      Benefit: ${formatMoney(third.rewardValue)} (~${third.effectivePct.toFixed(
-      2
-    )}%)`;
-    if (third.capped) {
-      html += ` <span class="warning">(partially capped)</span>`;
-    }
-    if (third.utilisationWarning) {
-      html += ` <span class="warning">(utilisation at/above your limit)</span>`;
-    }
-    html += `</p>`;
-  }
+  html += resultBlock("Best option", best, 0);
+  html += resultBlock("Next best", second, 1);
+  html += resultBlock("Third option", third, 2);
 
   html += `<p class="small">
-    After you actually use a method, remember to update
-    the "Used this cycle (₹)" and "Current util. %" values
-    in the table above so future calculations remain accurate.
+    After you actually use a method, click "I used this" on that option.
+    The app will update monthly caps and Kiwi Neon progress automatically,
+    so future recommendations stay accurate.
   </p>`;
 
   resultsArea.innerHTML = html;
 }
 
-// --- Wire up events on page load ---
+// --- Wire up on load ---
 
 window.addEventListener("DOMContentLoaded", () => {
+  ensureMonthlyReset();
+  ensureNeonYearRollover();
   renderMethodsTable();
   const btn = document.getElementById("calculateBtn");
   btn.addEventListener("click", renderResults);
