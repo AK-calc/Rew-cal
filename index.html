@@ -7,61 +7,236 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Rewards Optimizer</h1>
-  <p>
-    Enter brand and amount, then compare all active payment methods.
-    All logic runs in your browser; nothing is sent to any server.
-  </p>
+  <div class="page-shell">
+    <header class="page-header">
+      <h1>Rewards Optimizer</h1>
+      <p class="subtitle">
+        Compare Kiwi Neon vs SBI SimplyCLICK and other routes, with live caps and utilisation.
+      </p>
+    </header>
 
-  <!-- Transaction input -->
-  <section class="card">
-    <h2>1. Transaction details</h2>
-    <label>
-      Brand / merchant:
-      <input id="brandInput" type="text" placeholder="e.g. Swiggy, Amazon" />
-    </label>
-    <label>
-      Amount (₹):
-      <input id="amountInput" type="number" min="0" step="1" />
-    </label>
-    <button id="calculateBtn">Calculate best options</button>
-  </section>
+    <!-- Card utilisation tiles -->
+    <section class="card-utilisation-strip" id="cardUtilisationStrip">
+      <!-- SBI tile -->
+      <div class="card-tile sbi-card">
+        <div class="card-header-row">
+          <img src="sbi-logo.png" alt="SBI" class="bank-logo" />
+          <div class="card-product-name" id="sbiProductName">SimplyCLICK</div>
+        </div>
 
-  <!-- Results -->
-  <section class="card">
-    <h2>2. Recommendation</h2>
-    <div id="resultsArea">
-      <p>Enter amount and click "Calculate" to see results.</p>
-    </div>
-  </section>
+        <div class="card-middle-row">
+          <div class="card-left-block">
+            <img src="chip.png" alt="" class="card-chip" />
+            <div class="card-number">
+              •••• •••• •••• <span class="card-last4" id="sbiLast4">1234</span>
+            </div>
+            <div class="card-holder-name" id="cardHolderName">
+              YOUR NAME
+            </div>
+          </div>
+          <div class="card-right-block">
+            <img src="visa-logo.png" alt="VISA" class="card-network-logo" id="sbiNetworkLogo" />
+          </div>
+        </div>
 
-  <!-- Methods config -->
-  <section class="card">
-    <h2>3. Payment methods & caps</h2>
-    <p>
-      Edit reward %, caps and usage below. Changes are saved automatically
-      in your browser using localStorage. [web:554][web:558]
-    </p>
-    <div id="methodsTableContainer"></div>
-  </section>
+        <div class="card-utilisation-block">
+          <div class="util-bar">
+            <div class="util-bar-fill util-green" id="sbiUtilBar"></div>
+          </div>
+          <div class="util-bar-label" id="sbiUtilLabel">
+            ₹0 / ₹0 (0% of limit)
+          </div>
+        </div>
+      </div>
 
-  <section class="card">
-    <h2>4. Notes</h2>
-    <ul>
-      <li>
-        "Effective reward %" = voucher discount + portal reward +
-        card reward + float benefit (if any).
-      </li>
-      <li>
-        Monthly cap is the max reward value (₹) you can earn on that
-        method per cycle; usage is how much you have already used.
-      </li>
-      <li>
-        For now Amex PT and Marriott HDFC are present but disabled.
-        After you get them, just tick "Active" and adjust the numbers.
-      </li>
-    </ul>
-  </section>
+      <!-- Kiwi tile -->
+      <div class="card-tile kiwi-card">
+        <div class="card-header-row">
+          <img src="kiwi-logo.png" alt="Kiwi" class="bank-logo" />
+          <div class="card-product-name" id="kiwiProductName">KIWI</div>
+        </div>
+
+        <div class="card-middle-row">
+          <div class="card-left-block">
+            <img src="chip.png" alt="" class="card-chip" />
+            <div class="card-number">
+              •••• •••• •••• <span class="card-last4" id="kiwiLast4">5678</span>
+            </div>
+            <div class="card-holder-name" id="cardHolderNameKiwi">
+              YOUR NAME
+            </div>
+          </div>
+          <div class="card-right-block">
+            <img src="rupay-logo.png" alt="RUPAY" class="card-network-logo" id="kiwiNetworkLogo" />
+          </div>
+        </div>
+
+        <div class="card-utilisation-block">
+          <div class="util-bar">
+            <div class="util-bar-fill util-green" id="kiwiUtilBar"></div>
+          </div>
+          <div class="util-bar-label" id="kiwiUtilLabel">
+            ₹0 / ₹0 (0% of limit)
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main calculator card -->
+    <main class="card main-card">
+      <h2>Transaction input</h2>
+      <div class="form-row">
+        <label for="brandInput">Brand / merchant</label>
+        <input type="text" id="brandInput" placeholder="Swiggy, Amazon, Myntra..." />
+      </div>
+      <div class="form-row">
+        <label for="amountInput">Amount (₹)</label>
+        <input type="number" id="amountInput" min="1" step="1" placeholder="3000" />
+      </div>
+
+      <button id="calculateBtn" class="primary-btn">
+        Calculate best options
+      </button>
+
+      <p class="small">
+        Voucher % = discount on voucher/product; Portal % = extra cashback/coins from portals.
+      </p>
+
+      <h3>Payment methods & offers</h3>
+      <div class="table-wrapper">
+        <table class="methods-table">
+          <thead>
+            <tr>
+              <th>Active</th>
+              <th>Method</th>
+              <th>Voucher %</th>
+              <th>Portal %</th>
+              <th>Card %</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="methodsTbody">
+            <!-- Filled by script.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <section class="results-section">
+        <h3>Best options</h3>
+        <div id="resultsContainer">
+          <!-- Filled by script.js -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Advanced settings (hidden by default) -->
+    <section class="card advanced-card">
+      <details id="advancedToggle">
+        <summary>Advanced settings (edit model)</summary>
+
+        <div class="advanced-section">
+          <h3>Card setup</h3>
+          <div class="advanced-grid">
+            <!-- SBI settings -->
+            <div class="advanced-block">
+              <h4>SBI SimplyCLICK</h4>
+              <label>
+                Cardholder name
+                <input type="text" id="advCardholderNameSbi" />
+              </label>
+              <label>
+                Last 4 digits
+                <input type="text" id="advLast4Sbi" maxlength="4" />
+              </label>
+              <label>
+                Network (text)
+                <input type="text" id="advNetworkSbi" placeholder="VISA / MASTERCARD" />
+              </label>
+              <label>
+                Credit limit (₹)
+                <input type="number" id="advLimitSbi" />
+              </label>
+              <label>
+                Comfort utilisation % (e.g., 30)
+                <input type="number" id="advComfortSbi" />
+              </label>
+              <label>
+                Current cycle spend used (₹)
+                <input type="number" id="advCycleSpendSbi" />
+              </label>
+            </div>
+
+            <!-- Kiwi settings -->
+            <div class="advanced-block">
+              <h4>Kiwi Neon</h4>
+              <label>
+                Cardholder name
+                <input type="text" id="advCardholderNameKiwi" />
+              </label>
+              <label>
+                Last 4 digits
+                <input type="text" id="advLast4Kiwi" maxlength="4" />
+              </label>
+              <label>
+                Network (text)
+                <input type="text" id="advNetworkKiwi" placeholder="RUPAY / VISA" />
+              </label>
+              <label>
+                Credit limit (₹)
+                <input type="number" id="advLimitKiwi" />
+              </label>
+              <label>
+                Comfort utilisation % (e.g., 30)
+                <input type="number" id="advComfortKiwi" />
+              </label>
+              <label>
+                Current cycle spend used (₹)
+                <input type="number" id="advCycleSpendKiwi" />
+              </label>
+              <label>
+                Neon year start date (YYYY-MM-DD)
+                <input type="date" id="advNeonStart" />
+              </label>
+              <label>
+                Neon target annual spend (₹)
+                <input type="number" id="advNeonTarget" />
+              </label>
+              <label>
+                Neon year-to-date eligible spend (₹)
+                <input type="number" id="advNeonYtd" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="advanced-section">
+          <h3>Method caps & card % (optional)</h3>
+          <p class="small">
+            You can tweak monthly reward caps and base Card % if bank T&Cs change. Kiwi Neon Card %
+            is automatic (5% before ₹1.5L Neon milestone, 2% after).
+          </p>
+          <div class="table-wrapper">
+            <table class="methods-table small-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Monthly reward cap (₹)</th>
+                  <th>Base Card %</th>
+                </tr>
+              </thead>
+              <tbody id="advMethodsTbody">
+                <!-- Filled by script.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <button type="button" id="saveAdvancedBtn" class="secondary-btn">
+          Save advanced settings
+        </button>
+      </details>
+    </section>
+  </div>
 
   <script src="script.js"></script>
 </body>

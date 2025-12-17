@@ -1,459 +1,583 @@
-// Rewards Optimizer v2
-// - Kiwi Neon milestone-aware, back-loaded planning
-// - SBI SimplyCLICK 10X / 5X / 1X routes
-// - Per-method monthly cap tracking with "I used this" button
-// All persistent data stored in localStorage. [web:554][web:567]
-
-const METHODS_KEY = "rewardMethods_v2";
-const STATE_KEY = "rewardAppState_v1";
-
-// --- Default methods (routes) ---
-// Card % is fixed per route except Kiwi Neon, which is dynamic.
-const defaultMethods = [
-  {
-    id: "kiwi_neon",
-    name: "Kiwi UPI (Neon) – eligible spends",
-    active: true,
-    type: "kiwi_neon",
-    // You normally won't change these per transaction:
-    voucherDiscountPct: 0,
-    extraPortalRewardPct: 0,
-    cardRewardPct: 0, // computed dynamically
-    floatBenefitPct: 0,
-    // Approx monthly cashback cap ≈ 2% of 91,000 limit ≈ 1,800. Adjust if real data differs. [web:392][web:698]
-    monthlyCapValue: 1800,
-    utilisationLimitPct: 30,
-    currentUtilisationPct: 15
-  },
-  {
-    id: "sbi_10x_online",
-    name: "SBI SimplyCLICK – 10X online / SimplyCLICK GyFTR",
-    active: true,
-    type: "sbi_10x",
-    voucherDiscountPct: 0,
-    extraPortalRewardPct: 0,
-    // 10 RP/₹100, 1 RP ≈ ₹0.25 → 2.5% effective. [web:742][web:749]
-    cardRewardPct: 2.5,
-    floatBenefitPct: 0,
-    // 10,000 bonus RPs/month ≈ ₹2,500 value (approx cap for 10X bucket). [web:616][web:744][web:749]
-    monthlyCapValue: 2500,
-    utilisationLimitPct: 30,
-    currentUtilisationPct: 10
-  },
-  {
-    id: "sbi_5x_online",
-    name: "SBI SimplyCLICK – 5X other online (incl. SBI Card GyFTR)",
-    active: true,
-    type: "sbi_5x",
-    voucherDiscountPct: 0,
-    extraPortalRewardPct: 0,
-    // 5 RP/₹100 → 1.25% effective. [web:742][web:749]
-    cardRewardPct: 1.25,
-    floatBenefitPct: 0,
-    // 10,000 bonus RPs/month ≈ ₹2,500 for 5X bucket. [web:616][web:744][web:749]
-    monthlyCapValue: 2500,
-    utilisationLimitPct: 30,
-    currentUtilisationPct: 10
-  },
-  {
-    id: "sbi_1x_offline",
-    name: "SBI SimplyCLICK – 1X offline / other",
-    active: true,
-    type: "sbi_1x",
-    voucherDiscountPct: 0,
-    extraPortalRewardPct: 0,
-    // 1 RP/₹100 → 0.25%. [web:744][web:749]
-    cardRewardPct: 0.25,
-    floatBenefitPct: 0,
-    monthlyCapValue: 0, // no practical cap
-    utilisationLimitPct: 30,
-    currentUtilisationPct: 10
-  }
-  // Future routes (Amex PT, Marriott HDFC etc.) can be added later with active:false.
-];
-
-// --- Global app state (caps, Kiwi Neon, etc.) ---
-const defaultState = {
-  // Per-method monthly reward usage in ₹ (against monthlyCapValue)
-  methodRewardUsed: {},
-
-  // Kiwi Neon planning
-  neonYearStart: "2025-08-02", // your Neon start date [web:704][memory:734]
-  kiwiNeonTargetAnnualSpend: 150000, // ₹1.5L target
-  kiwiNeonYtdSpend: 94644, // starting from your current eligible Neon spends [memory:734]
-
-  // For resetting monthly caps
-  lastMonthKey: null
-};
-
-// --- localStorage helpers --- [web:554][web:567]
-
-function loadMethods() {
-  try {
-    const raw = localStorage.getItem(METHODS_KEY);
-    if (!raw) return defaultMethods;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return defaultMethods;
-    return parsed;
-  } catch (e) {
-    console.warn("Failed to load methods, using defaults", e);
-    return defaultMethods;
-  }
-}
-
-function saveMethods(methods) {
-  try {
-    localStorage.setItem(METHODS_KEY, JSON.stringify(methods));
-  } catch (e) {
-    console.warn("Failed to save methods", e);
-  }
-}
+// Simple localStorage helpers
+const STORAGE_KEY = "rewardsCalculatorState_v2";
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STATE_KEY);
-    if (!raw) return { ...defaultState };
-    const parsed = JSON.parse(raw);
-    return { ...defaultState, ...parsed };
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch (e) {
-    console.warn("Failed to load state, using defaults", e);
-    return { ...defaultState };
+    return null;
   }
 }
 
-function saveState() {
-  try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(appState));
-  } catch (e) {
-    console.warn("Failed to save state", e);
-  }
+function saveState(state) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-// --- Month / Neon-year resets ---
-
-function getCurrentMonthKey() {
-  const now = new Date();
-  return now.getFullYear() + "-" + (now.getMonth() + 1);
-}
-
-function ensureMonthlyReset() {
-  const currentKey = getCurrentMonthKey();
-  if (appState.lastMonthKey !== currentKey) {
-    // New month → reset per-method monthly reward usage
-    appState.methodRewardUsed = {};
-    appState.lastMonthKey = currentKey;
-    saveState();
-  }
-}
-
-function ensureNeonYearRollover() {
-  const start = new Date(appState.neonYearStart || defaultState.neonYearStart);
-  const now = new Date();
-  const nextStart = new Date(start.getTime());
-  nextStart.setFullYear(start.getFullYear() + 1);
-
-  if (now >= nextStart) {
-    // Start a new Neon year from this year's same date
-    const newStart = new Date(nextStart.getFullYear(), start.getMonth(), start.getDate());
-    appState.neonYearStart = newStart.toISOString().slice(0, 10);
-    appState.kiwiNeonYtdSpend = 0;
-    saveState();
-  }
-}
-
-// --- In-memory data ---
-
-let methods = loadMethods();
-let appState = loadState();
-ensureMonthlyReset();
-ensureNeonYearRollover();
-
-let lastResults = [];
-
-// --- Methods table (settings) UI ---
-
-function renderMethodsTable() {
-  const container = document.getElementById("methodsTableContainer");
-  container.innerHTML = "";
-
-  const table = document.createElement("table");
-  table.className = "methods-table";
-
-  const headerRow = document.createElement("tr");
-  headerRow.innerHTML = `
-    <th>Active</th>
-    <th>Method</th>
-    <th>Voucher %</th>
-    <th>Portal %</th>
-    <th>Card %</th>
-    <th>Float %</th>
-    <th>Monthly cap (₹)</th>
-    <th>Util. limit %</th>
-    <th>Current util. %</th>
-  `;
-  table.appendChild(headerRow);
-
-  methods.forEach((m, index) => {
-    const row = document.createElement("tr");
-
-    // Active checkbox
-    const activeCell = document.createElement("td");
-    const activeInput = document.createElement("input");
-    activeInput.type = "checkbox";
-    activeInput.checked = !!m.active;
-    activeInput.addEventListener("change", () => {
-      methods[index].active = activeInput.checked;
-      saveMethods(methods);
-    });
-    activeCell.appendChild(activeInput);
-    row.appendChild(activeCell);
-
-    // Name (read-only)
-    const nameCell = document.createElement("td");
-    nameCell.textContent = m.name;
-    row.appendChild(nameCell);
-
-    // Numeric editable cells
-    function makeNumberCell(field, step = "0.1") {
-      const cell = document.createElement("td");
-      const input = document.createElement("input");
-      input.type = "number";
-      input.step = step;
-      input.value = m[field] != null ? m[field] : 0;
-      input.addEventListener("change", () => {
-        const val = parseFloat(input.value) || 0;
-        methods[index][field] = val;
-        saveMethods(methods);
-      });
-      cell.appendChild(input);
-      return cell;
+// Default model
+const defaultState = {
+  cards: {
+    sbi: {
+      holderName: "YOUR NAME",
+      last4: "1234",
+      network: "VISA",
+      limit: 252000,
+      comfortPercent: 30,
+      cycleSpendUsed: 0
+    },
+    kiwi: {
+      holderName: "YOUR NAME",
+      last4: "5678",
+      network: "RUPAY",
+      limit: 91000,
+      comfortPercent: 30,
+      cycleSpendUsed: 0,
+      neonStartDate: "2025-08-02",
+      neonTargetAnnualSpend: 150000,
+      neonYtdEligibleSpend: 94644
     }
+  },
+  methods: [
+    {
+      id: "kiwi_neon_upi",
+      label: "Kiwi UPI (Neon)",
+      cardKey: "kiwi",
+      baseCardPercent: null, // dynamic
+      monthlyRewardCap: 1800,
+      rewardUsedThisCycle: 0,
+      active: true,
+      showVoucherPortal: false
+    },
+    {
+      id: "sbi_10x",
+      label: "SBI SimplyCLICK – 10X / SimplyCLICK GyFTR",
+      cardKey: "sbi",
+      baseCardPercent: 2.5,
+      monthlyRewardCap: 2500,
+      rewardUsedThisCycle: 0,
+      active: true,
+      showVoucherPortal: true
+    },
+    {
+      id: "sbi_5x",
+      label: "SBI SimplyCLICK – other online (5X)",
+      cardKey: "sbi",
+      baseCardPercent: 1.25,
+      monthlyRewardCap: 2500,
+      rewardUsedThisCycle: 0,
+      active: true,
+      showVoucherPortal: true
+    },
+    {
+      id: "sbi_offline",
+      label: "SBI – offline / other (1X)",
+      cardKey: "sbi",
+      baseCardPercent: 0.25,
+      monthlyRewardCap: 999999, // effectively uncapped
+      rewardUsedThisCycle: 0,
+      active: false,
+      showVoucherPortal: false
+    }
+  ]
+};
 
-    row.appendChild(makeNumberCell("voucherDiscountPct"));
-    row.appendChild(makeNumberCell("extraPortalRewardPct"));
+let appState = loadState() || defaultState;
 
-    // Card %: for Kiwi Neon, this is not used but you can override if you want
-    row.appendChild(makeNumberCell("cardRewardPct"));
+// DOM references
+let methodsTbody;
+let advMethodsTbody;
+let resultsContainer;
 
-    row.appendChild(makeNumberCell("floatBenefitPct"));
-    row.appendChild(makeNumberCell("monthlyCapValue", "1"));
-    row.appendChild(makeNumberCell("utilisationLimitPct"));
-    row.appendChild(makeNumberCell("currentUtilisationPct"));
+// Render methods table in main view
+function renderMethodsTable() {
+  methodsTbody.innerHTML = "";
+  appState.methods.forEach((m, index) => {
+    const tr = document.createElement("tr");
 
-    table.appendChild(row);
+    // Active toggle
+    const tdActive = document.createElement("td");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = m.active;
+    cb.addEventListener("change", () => {
+      m.active = cb.checked;
+      saveState(appState);
+    });
+    tdActive.appendChild(cb);
+    tr.appendChild(tdActive);
+
+    // Method label
+    const tdLabel = document.createElement("td");
+    tdLabel.textContent = m.label;
+    tr.appendChild(tdLabel);
+
+    // Voucher %
+    const tdVoucher = document.createElement("td");
+    if (m.showVoucherPortal) {
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.step = "0.1";
+      inp.value = 0;
+      inp.className = "voucher-input";
+      inp.dataset.methodId = m.id;
+      tdVoucher.appendChild(inp);
+    } else {
+      tdVoucher.textContent = "—";
+    }
+    tr.appendChild(tdVoucher);
+
+    // Portal %
+    const tdPortal = document.createElement("td");
+    if (m.showVoucherPortal) {
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.step = "0.1";
+      inp.value = 0;
+      inp.className = "portal-input";
+      inp.dataset.methodId = m.id;
+      tdPortal.appendChild(inp);
+    } else {
+      tdPortal.textContent = "—";
+    }
+    tr.appendChild(tdPortal);
+
+    // Card %
+    const tdCard = document.createElement("td");
+    if (m.id === "kiwi_neon_upi") {
+      tdCard.textContent = "Auto (Neon 5%/2%)";
+    } else {
+      tdCard.textContent = `${m.baseCardPercent.toFixed(2)}%`;
+    }
+    tr.appendChild(tdCard);
+
+    // Notes
+    const tdNotes = document.createElement("td");
+    if (m.id === "kiwi_neon_upi") {
+      tdNotes.textContent = "Kiwi Neon Scan & Pay only; no voucher/portal layer here.";
+    } else {
+      tdNotes.textContent = "";
+    }
+    tr.appendChild(tdNotes);
+
+    methodsTbody.appendChild(tr);
   });
-
-  container.appendChild(table);
 }
 
-// --- Kiwi Neon effective % (with milestone & back-loaded pacing) ---
+// Advanced: methods table for caps & base Card %
+function renderAdvancedMethodsTable() {
+  advMethodsTbody.innerHTML = "";
+  appState.methods.forEach((m) => {
+    const tr = document.createElement("tr");
 
-function computeKiwiEffectivePct(amount) {
-  const baseLow = 2; // post-milestone base on eligible UPI [web:378][web:725]
-  const high = 5;    // effective on first ₹1.5L (2% instant + 3% milestone) [web:378][web:706]
-  const target = appState.kiwiNeonTargetAnnualSpend || 150000;
-  const ytd = appState.kiwiNeonYtdSpend || 0;
+    const tdLabel = document.createElement("td");
+    tdLabel.textContent = m.label;
+    tr.appendChild(tdLabel);
 
-  const remainingAtHigh = Math.max(0, target - ytd);
-  let pctBase;
+    const tdCap = document.createElement("td");
+    const inpCap = document.createElement("input");
+    inpCap.type = "number";
+    inpCap.value = m.monthlyRewardCap;
+    inpCap.addEventListener("change", () => {
+      m.monthlyRewardCap = Number(inpCap.value) || 0;
+      saveState(appState);
+    });
+    tdCap.appendChild(inpCap);
+    tr.appendChild(tdCap);
 
-  if (remainingAtHigh <= 0) {
-    pctBase = baseLow;
-  } else if (amount <= remainingAtHigh) {
-    pctBase = high;
-  } else {
-    const partHigh = remainingAtHigh;
-    const partLow = amount - remainingAtHigh;
-    const reward =
-      (high / 100) * partHigh + (baseLow / 100) * partLow;
-    pctBase = (reward / amount) * 100;
-  }
+    const tdCard = document.createElement("td");
+    if (m.id === "kiwi_neon_upi") {
+      tdCard.textContent = "Auto (Neon)";
+    } else {
+      const inpCard = document.createElement("input");
+      inpCard.type = "number";
+      inpCard.step = "0.1";
+      inpCard.value = m.baseCardPercent;
+      inpCard.addEventListener("change", () => {
+        m.baseCardPercent = Number(inpCard.value) || 0;
+        saveState(appState);
+      });
+      tdCard.appendChild(inpCard);
+    }
+    tr.appendChild(tdCard);
 
-  // Back-loaded pacing: slow early, faster later. [web:730][web:724]
-  const start = new Date(appState.neonYearStart || defaultState.neonYearStart);
-  const now = new Date();
-  const end = new Date(start.getTime());
-  end.setFullYear(start.getFullYear() + 1);
-
-  const totalMs = Math.max(1, end - start);
-  const elapsedMs = Math.min(Math.max(0, now - start), totalMs);
-  const frac = elapsedMs / totalMs; // 0..1
-  const idealYtd = target * (frac * frac); // back-loaded curve
-
-  const tolerance = 0.2; // 20% ahead of ideal allowed before we penalise
-  if (ytd > idealYtd * (1 + tolerance)) {
-    // Ahead of plan: soften Kiwi a bit but never below baseLow
-    const scaled = pctBase * 0.8;
-    pctBase = Math.max(baseLow, scaled);
-  }
-
-  return pctBase;
+    advMethodsTbody.appendChild(tr);
+  });
 }
 
-// --- Core calculation logic ---
+// Utilisation helpers
+function utilisationPercent(card, extraSpend = 0) {
+  if (!card.limit || card.limit <= 0) return 0;
+  return ((card.cycleSpendUsed + extraSpend) / card.limit) * 100;
+}
 
-function calculateForAmount(amount, brand) {
+function utilisationClass(pct) {
+  if (pct <= 30) return "util-green";
+  if (pct <= 60) return "util-amber";
+  if (pct <= 90) return "util-orange";
+  return "util-red";
+}
+
+// Kiwi Neon effective % including crossing milestone
+function getKiwiEffectivePercent(amount) {
+  const kiwi = appState.cards.kiwi;
+  const target = kiwi.neonTargetAnnualSpend || 150000;
+  const ytd = kiwi.neonYtdEligibleSpend || 0;
+
+  const baseAfter = 2; // %
+  const baseBefore = 5;
+
+  if (amount <= 0) return baseBefore;
+
+  if (ytd >= target) {
+    return baseAfter;
+  }
+  if (ytd + amount <= target) {
+    return baseBefore;
+  }
+
+  // Part of txn before milestone, part after
+  const partBefore = target - ytd;
+  const partAfter = amount - partBefore;
+
+  const rewardBefore = (baseBefore / 100) * partBefore;
+  const rewardAfter = (baseAfter / 100) * partAfter;
+  const totalReward = rewardBefore + rewardAfter;
+
+  return (totalReward / amount) * 100;
+}
+
+// Reward cap logic: approximate, applies to total method %
+function applyRewardCap(m, effectivePercent, amount) {
+  if (!m.monthlyRewardCap || m.monthlyRewardCap <= 0) {
+    return { effectivePercent, capped: false, partiallyCapped: false };
+  }
+
+  const potentialReward = (effectivePercent / 100) * amount;
+  const remainingCap = m.monthlyRewardCap - m.rewardUsedThisCycle;
+
+  if (remainingCap <= 0) {
+    return { effectivePercent: 0, capped: true, partiallyCapped: false };
+  }
+
+  if (potentialReward <= remainingCap) {
+    return { effectivePercent, capped: false, partiallyCapped: false };
+  }
+
+  // Partially capped: some of the reward is at full %, rest at 0
+  const rewardedAmount = (remainingCap * 100) / effectivePercent;
+  const blendedReward = remainingCap; // rest earns 0 from this method's reward component
+  const blendedPercent = (blendedReward / amount) * 100;
+
+  return { effectivePercent: blendedPercent, capped: false, partiallyCapped: true };
+}
+
+// Utilisation penalty for ranking
+function utilisationPenalty(card, projectedPct) {
+  const comfort = card.comfortPercent || 30;
+  if (projectedPct <= comfort) return 0;
+  if (projectedPct <= comfort * 2) return 0.5;
+  if (projectedPct <= 90) return 1;
+  return 5;
+}
+
+// Read voucher/portal % from table for a method
+function getVoucherPortalPercents() {
+  const result = {};
+  document.querySelectorAll(".voucher-input").forEach((inp) => {
+    const id = inp.dataset.methodId;
+    result[id] = result[id] || { voucher: 0, portal: 0 };
+    result[id].voucher = Number(inp.value) || 0;
+  });
+  document.querySelectorAll(".portal-input").forEach((inp) => {
+    const id = inp.dataset.methodId;
+    result[id] = result[id] || { voucher: 0, portal: 0 };
+    result[id].portal = Number(inp.value) || 0;
+  });
+  return result;
+}
+
+// Calculate best options
+function calculateOptions() {
+  const brand = document.getElementById("brandInput").value.trim();
+  const amount = Number(document.getElementById("amountInput").value) || 0;
+
+  if (amount <= 0) {
+    resultsContainer.innerHTML =
+      '<p class="warning">Enter a valid amount in rupees first.</p>';
+    return;
+  }
+
+  const vp = getVoucherPortalPercents();
   const candidates = [];
 
-  methods.forEach((m) => {
+  appState.methods.forEach((m) => {
     if (!m.active) return;
 
-    // Determine card % for this transaction
-    let cardPct;
-    if (m.type === "kiwi_neon") {
-      cardPct = computeKiwiEffectivePct(amount);
+    const card = appState.cards[m.cardKey];
+    if (!card) return;
+
+    const voucher = (vp[m.id]?.voucher || 0);
+    const portal = (vp[m.id]?.portal || 0);
+
+    let cardPercent;
+    if (m.id === "kiwi_neon_upi") {
+      cardPercent = getKiwiEffectivePercent(amount);
     } else {
-      cardPct = m.cardRewardPct || 0;
+      cardPercent = m.baseCardPercent || 0;
     }
 
-    const voucherPct = m.voucherDiscountPct || 0;
-    const portalPct = m.extraPortalRewardPct || 0;
-    const floatPct = m.floatBenefitPct || 0;
+    let effectivePercent = voucher + portal + cardPercent;
+    let capInfo = applyRewardCap(m, effectivePercent, amount);
+    effectivePercent = capInfo.effectivePercent;
 
-    const effectivePctRaw = voucherPct + portalPct + cardPct + floatPct;
-    if (effectivePctRaw <= 0) return;
+    const projectedUtilPct = utilisationPercent(card, amount);
+    const utilPctCurrent = utilisationPercent(card, 0);
+    const penalty = utilisationPenalty(card, projectedUtilPct);
+    const score = effectivePercent - penalty;
 
-    const cap = m.monthlyCapValue || 0;
-    const used = appState.methodRewardUsed[m.id] || 0;
-    let rewardValue = (effectivePctRaw / 100) * amount;
-    let capped = false;
-
-    if (cap > 0) {
-      const headroom = cap - used;
-      if (headroom <= 0) {
-        // Cap fully used: only discount/portal/float matter, card reward ignored
-        const nonCardPct = voucherPct + portalPct + floatPct;
-        rewardValue = (nonCardPct / 100) * amount;
-        capped = true;
-      } else if (headroom < rewardValue) {
-        rewardValue = headroom;
-        capped = true;
-      }
-    }
-
-    const effectivePct = amount > 0 ? (rewardValue / amount) * 100 : 0;
-    const utilisationLimit = m.utilisationLimitPct || 100;
-    const currentUtil = m.currentUtilisationPct || 0;
-    const utilisationWarning = currentUtil >= utilisationLimit;
+    const rewardValue = (effectivePercent / 100) * amount;
 
     candidates.push({
       method: m,
       brand,
       amount,
+      voucher,
+      portal,
+      cardPercent,
       rewardValue,
-      effectivePct,
-      capped,
-      utilisationWarning
+      effectivePercent,
+      score,
+      card,
+      utilPctCurrent,
+      projectedUtilPct,
+      capInfo
     });
   });
 
-  candidates.sort((a, b) => b.rewardValue - a.rewardValue);
-  lastResults = candidates;
-  return candidates;
-}
-
-function formatMoney(x) {
-  return "₹" + x.toFixed(0);
-}
-
-// --- Mark a result as "used" so caps/milestones update ---
-
-function markResultUsed(index) {
-  if (!lastResults || !lastResults[index]) return;
-  const res = lastResults[index];
-  const m = res.method;
-
-  // Update per-method monthly reward usage
-  const prevUsed = appState.methodRewardUsed[m.id] || 0;
-  appState.methodRewardUsed[m.id] = prevUsed + res.rewardValue;
-
-  // Update Kiwi Neon YTD spend when Kiwi route actually used
-  if (m.type === "kiwi_neon") {
-    appState.kiwiNeonYtdSpend =
-      (appState.kiwiNeonYtdSpend || 0) + res.amount;
-  }
-
-  saveState();
-  renderMethodsTable();
-  // Optional: simple acknowledgement in results
-  const resultsArea = document.getElementById("resultsArea");
-  const note = document.createElement("p");
-  note.className = "small";
-  note.textContent =
-    "Recorded this transaction for caps/milestones. Future calculations will account for it.";
-  resultsArea.appendChild(note);
-}
-
-// expose for inline onclick
-window.markResultUsed = markResultUsed;
-
-// --- Render results UI ---
-
-function renderResults() {
-  const brandInput = document.getElementById("brandInput");
-  const amountInput = document.getElementById("amountInput");
-  const resultsArea = document.getElementById("resultsArea");
-
-  const brand = brandInput.value.trim() || "This brand";
-  const amount = parseFloat(amountInput.value);
-
-  if (!amount || amount <= 0) {
-    resultsArea.innerHTML = "<p>Please enter a valid amount.</p>";
+  if (candidates.length === 0) {
+    resultsContainer.innerHTML =
+      '<p class="warning">No active methods. Enable at least one in the table above.</p>';
     return;
   }
 
-  const results = calculateForAmount(amount, brand);
+  candidates.sort((a, b) => b.score - a.score);
 
-  if (!results || results.length === 0) {
-    resultsArea.innerHTML =
-      "<p>No active methods with positive reward %. Check your settings.</p>";
-    return;
-  }
+  const best = candidates[0];
+  const nextBest = candidates[1];
 
-  const best = results[0];
-  const second = results[1];
-  const third = results[2];
-
-  let html = "";
-
-  function resultBlock(label, res, idx) {
-    if (!res) return "";
-    let block = `<p><strong>${label}:</strong><br>
-      ${brand} – ${formatMoney(res.amount)}<br>
-      Use <strong>${res.method.name}</strong><br>
-      Estimated benefit: <strong>${formatMoney(
-        res.rewardValue
-      )}</strong> (~${res.effectivePct.toFixed(2)}%)`;
-    if (res.capped) {
-      block += ` <span class="warning">(partially / fully capped)</span>`;
-    }
-    if (res.utilisationWarning) {
-      block += ` <span class="warning">(utilisation at/above your limit)</span>`;
-    }
-    block += `<br><button onclick="markResultUsed(${idx})">I used this</button>`;
-    block += `</p>`;
-    return block;
-  }
-
-  html += resultBlock("Best option", best, 0);
-  html += resultBlock("Next best", second, 1);
-  html += resultBlock("Third option", third, 2);
-
-  html += `<p class="small">
-    After you actually use a method, click "I used this" on that option.
-    The app will update monthly caps and Kiwi Neon progress automatically,
-    so future recommendations stay accurate.
-  </p>`;
-
-  resultsArea.innerHTML = html;
+  renderResults(best, nextBest);
 }
 
-// --- Wire up on load ---
+// Render best / next-best cards
+function renderResults(best, nextBest) {
+  resultsContainer.innerHTML = "";
 
-window.addEventListener("DOMContentLoaded", () => {
-  ensureMonthlyReset();
-  ensureNeonYearRollover();
+  [best, nextBest].forEach((item, idx) => {
+    if (!item) return;
+    const div = document.createElement("div");
+    div.className = "result-card";
+
+    const title = document.createElement("div");
+    title.className = "result-title";
+    title.textContent = idx === 0 ? "Best option" : "Next best option";
+    div.appendChild(title);
+
+    const l1 = document.createElement("div");
+    l1.className = "result-line";
+    l1.textContent = `${item.method.label} – Effective ~${item.effectivePercent.toFixed(
+      2
+    )}% ⇒ ~₹${item.rewardValue.toFixed(0)} back on ₹${item.amount.toFixed(0)}.`;
+    div.appendChild(l1);
+
+    const l2 = document.createElement("div");
+    l2.className = "result-line";
+    l2.textContent = `Break-up: Voucher ${item.voucher.toFixed(
+      1
+    )}%, Portal ${item.portal.toFixed(1)}%, Card ${item.cardPercent.toFixed(2)}%.`;
+    div.appendChild(l2);
+
+    const utilMsg = document.createElement("div");
+    utilMsg.className = "result-line";
+    utilMsg.textContent = `${item.method.cardKey.toUpperCase()} utilisation: currently ${item.utilPctCurrent.toFixed(
+      1
+    )}% → projected ${item.projectedUtilPct.toFixed(1)}% of limit.`;
+    div.appendChild(utilMsg);
+
+    if (item.capInfo.capped) {
+      const capWarn = document.createElement("div");
+      capWarn.className = "warning";
+      capWarn.textContent =
+        "This method’s monthly reward cap is already fully used. Treat this as 0% for the remainder of the cycle.";
+      div.appendChild(capWarn);
+    } else if (item.capInfo.partiallyCapped) {
+      const capWarn = document.createElement("div");
+      capWarn.className = "warning";
+      capWarn.textContent =
+        "This transaction will partially cross the monthly reward cap; effective % shown is blended for this amount.";
+      div.appendChild(capWarn);
+    }
+
+    if (item.projectedUtilPct > item.card.comfortPercent) {
+      const utilWarn = document.createElement("div");
+      utilWarn.className = "warning";
+      utilWarn.textContent =
+        "Warning: This transaction pushes this card above your utilisation comfort level.";
+      div.appendChild(utilWarn);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "result-actions";
+
+    const btnUse = document.createElement("button");
+    btnUse.className = "secondary-btn";
+    btnUse.textContent = "I used this";
+    btnUse.addEventListener("click", () => markUsed(item));
+    actions.appendChild(btnUse);
+
+    div.appendChild(actions);
+    resultsContainer.appendChild(div);
+  });
+}
+
+// When user confirms they used a method
+function markUsed(result) {
+  const { method, amount, card, rewardValue } = result;
+
+  // Update card utilisation (cycle spend)
+  card.cycleSpendUsed += amount;
+
+  // Update method reward-used count
+  method.rewardUsedThisCycle += rewardValue;
+
+  // Update Kiwi Neon YTD if relevant
+  if (method.id === "kiwi_neon_upi") {
+    appState.cards.kiwi.neonYtdEligibleSpend += amount;
+  }
+
+  saveState(appState);
+  renderCardTiles();
+  calculateOptions();
+}
+
+// Render card tiles
+function renderCardTiles() {
+  const sbi = appState.cards.sbi;
+  const kiwi = appState.cards.kiwi;
+
+  // Shared holder name: from SBI, fallback KIWI
+  const holderSbi = document.getElementById("advCardholderNameSbi").value || sbi.holderName;
+  const holderKiwi =
+    document.getElementById("advCardholderNameKiwi").value || kiwi.holderName;
+
+  // SBI tile
+  document.getElementById("sbiLast4").textContent = sbi.last4;
+  document.getElementById("cardHolderName").textContent = holderSbi || "YOUR NAME";
+  document.getElementById("sbiProductName").textContent = "SimplyCLICK";
+  const sbiPct = utilisationPercent(sbi);
+  const sbiBar = document.getElementById("sbiUtilBar");
+  sbiBar.style.width = `${Math.min(100, sbiPct).toFixed(1)}%`;
+  sbiBar.className = `util-bar-fill ${utilisationClass(sbiPct)}`;
+  const sbiLimit = sbi.limit || 0;
+  document.getElementById(
+    "sbiUtilLabel"
+  ).textContent = `₹${sbi.cycleSpendUsed.toFixed(0)} / ₹${sbiLimit.toFixed(
+    0
+  )} (${sbiPct.toFixed(1)}% of limit)`;
+
+  // Kiwi tile
+  document.getElementById("kiwiLast4").textContent = kiwi.last4;
+  document.getElementById("cardHolderNameKiwi").textContent = holderKiwi || "YOUR NAME";
+  document.getElementById("kiwiProductName").textContent = "KIWI";
+  const kiwiPct = utilisationPercent(kiwi);
+  const kiwiBar = document.getElementById("kiwiUtilBar");
+  kiwiBar.style.width = `${Math.min(100, kiwiPct).toFixed(1)}%`;
+  kiwiBar.className = `util-bar-fill ${utilisationClass(kiwiPct)}`;
+  const kiwiLimit = kiwi.limit || 0;
+  document.getElementById(
+    "kiwiUtilLabel"
+  ).textContent = `₹${kiwi.cycleSpendUsed.toFixed(0)} / ₹${kiwiLimit.toFixed(
+    0
+  )} (${kiwiPct.toFixed(1)}% of limit)`;
+}
+
+// Load advanced settings into inputs
+function populateAdvancedInputs() {
+  const sbi = appState.cards.sbi;
+  const kiwi = appState.cards.kiwi;
+
+  document.getElementById("advCardholderNameSbi").value = sbi.holderName;
+  document.getElementById("advLast4Sbi").value = sbi.last4;
+  document.getElementById("advNetworkSbi").value = sbi.network;
+  document.getElementById("advLimitSbi").value = sbi.limit;
+  document.getElementById("advComfortSbi").value = sbi.comfortPercent;
+  document.getElementById("advCycleSpendSbi").value = sbi.cycleSpendUsed;
+
+  document.getElementById("advCardholderNameKiwi").value = kiwi.holderName;
+  document.getElementById("advLast4Kiwi").value = kiwi.last4;
+  document.getElementById("advNetworkKiwi").value = kiwi.network;
+  document.getElementById("advLimitKiwi").value = kiwi.limit;
+  document.getElementById("advComfortKiwi").value = kiwi.comfortPercent;
+  document.getElementById("advCycleSpendKiwi").value = kiwi.cycleSpendUsed;
+  document.getElementById("advNeonStart").value = kiwi.neonStartDate || "";
+  document.getElementById("advNeonTarget").value = kiwi.neonTargetAnnualSpend || 150000;
+  document.getElementById("advNeonYtd").value = kiwi.neonYtdEligibleSpend || 0;
+}
+
+// Save advanced settings back to state
+function saveAdvancedFromInputs() {
+  const sbi = appState.cards.sbi;
+  const kiwi = appState.cards.kiwi;
+
+  sbi.holderName = document.getElementById("advCardholderNameSbi").value || sbi.holderName;
+  sbi.last4 = document.getElementById("advLast4Sbi").value || sbi.last4;
+  sbi.network =
+    document.getElementById("advNetworkSbi").value || sbi.network || "VISA";
+  sbi.limit = Number(document.getElementById("advLimitSbi").value) || sbi.limit;
+  sbi.comfortPercent =
+    Number(document.getElementById("advComfortSbi").value) || sbi.comfortPercent;
+  sbi.cycleSpendUsed =
+    Number(document.getElementById("advCycleSpendSbi").value) || sbi.cycleSpendUsed;
+
+  kiwi.holderName =
+    document.getElementById("advCardholderNameKiwi").value || kiwi.holderName;
+  kiwi.last4 = document.getElementById("advLast4Kiwi").value || kiwi.last4;
+  kiwi.network =
+    document.getElementById("advNetworkKiwi").value || kiwi.network || "RUPAY";
+  kiwi.limit =
+    Number(document.getElementById("advLimitKiwi").value) || kiwi.limit;
+  kiwi.comfortPercent =
+    Number(document.getElementById("advComfortKiwi").value) || kiwi.comfortPercent;
+  kiwi.cycleSpendUsed =
+    Number(document.getElementById("advCycleSpendKiwi").value) || kiwi.cycleSpendUsed;
+  kiwi.neonStartDate = document.getElementById("advNeonStart").value || kiwi.neonStartDate;
+  kiwi.neonTargetAnnualSpend =
+    Number(document.getElementById("advNeonTarget").value) ||
+    kiwi.neonTargetAnnualSpend ||
+    150000;
+  kiwi.neonYtdEligibleSpend =
+    Number(document.getElementById("advNeonYtd").value) || kiwi.neonYtdEligibleSpend;
+
+  saveState(appState);
+  renderCardTiles();
+}
+
+// Init
+document.addEventListener("DOMContentLoaded", () => {
+  methodsTbody = document.getElementById("methodsTbody");
+  advMethodsTbody = document.getElementById("advMethodsTbody");
+  resultsContainer = document.getElementById("resultsContainer");
+
   renderMethodsTable();
-  const btn = document.getElementById("calculateBtn");
-  btn.addEventListener("click", renderResults);
+  renderAdvancedMethodsTable();
+  populateAdvancedInputs();
+  renderCardTiles();
+
+  document
+    .getElementById("calculateBtn")
+    .addEventListener("click", calculateOptions);
+
+  document
+    .getElementById("saveAdvancedBtn")
+    .addEventListener("click", saveAdvancedFromInputs);
 });

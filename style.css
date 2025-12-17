@@ -1,74 +1,115 @@
-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, sans-serif;
-  margin: 0;
-  padding: 1rem;
-  background: #f5f5f5;
+/* Base layout & background */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-h1 {
-  margin-top: 0;
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+  color: #0f172a;
 }
+
+.page-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.page-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.subtitle {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+/* Generic card container */
 
 .card {
   background: #ffffff;
-  border-radius: 6px;
-  padding: 1rem;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
   margin-bottom: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
+}
+
+.main-card h2 {
+  margin-top: 0;
+}
+
+/* Form fields */
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.75rem;
 }
 
 label {
-  display: block;
-  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
 }
 
 input[type="text"],
-input[type="number"] {
-  width: 240px;
-  max-width: 100%;
-  padding: 0.3rem 0.4rem;
-  margin-left: 0.3rem;
-  border: 1px solid #ccc;
+input[type="number"],
+input[type="date"] {
+  width: 100%;
+  padding: 0.4rem 0.45rem;
   border-radius: 4px;
+  border: 1px solid #d1d5db;
   font-size: 0.9rem;
 }
 
-/* Primary buttons (including Calculate) */
+/* Buttons */
+
 button {
-  margin-top: 0.5rem;
-  padding: 0.45rem 0.9rem;
   cursor: pointer;
+  border: none;
   border-radius: 4px;
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #ffffff;
+  padding: 0.5rem 0.9rem;
   font-size: 0.9rem;
-  line-height: 1.2;
+  font-weight: 500;
 }
 
-button:hover {
+.primary-btn {
+  background: #2563eb;
+  color: #f9fafb;
+  margin-bottom: 0.75rem;
+}
+
+.primary-btn:hover {
   background: #1d4ed8;
-  border-color: #1d4ed8;
 }
 
-/* "I used this" buttons in results – make them a bit calmer */
-#resultsArea button {
-  margin-top: 0.25rem;
-  padding: 0.3rem 0.7rem;
+.secondary-btn {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.secondary-btn:hover {
+  background: #d1d5db;
+}
+
+/* Small helper text */
+
+.small {
   font-size: 0.8rem;
-  border-radius: 4px;
-  border: 1px solid #16a34a;
-  background: #16a34a;
-  color: #ffffff;
+  color: #6b7280;
 }
 
-#resultsArea button:hover {
-  background: #15803d;
-  border-color: #15803d;
+/* Table */
+
+.table-wrapper {
+  overflow-x: auto;
 }
 
-/* Methods table styling */
 .methods-table {
   width: 100%;
   border-collapse: collapse;
@@ -77,31 +118,227 @@ button:hover {
 
 .methods-table th,
 .methods-table td {
-  border: 1px solid #ddd;
-  padding: 0.25rem 0.35rem;
-  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0.35rem 0.4rem;
+  text-align: left;
 }
 
 .methods-table th {
-  background: #f0f0f0;
+  background: #f9fafb;
   font-weight: 600;
 }
 
-/* Make number inputs in the table smaller so it fits better */
 .methods-table input[type="number"] {
   width: 70px;
   padding: 0.2rem 0.3rem;
   font-size: 0.8rem;
 }
 
-/* Warnings and small text */
+.methods-table input[type="checkbox"] {
+  transform: scale(1.1);
+}
+
+/* Results */
+
+.results-section h3 {
+  margin-top: 1rem;
+}
+
+.result-card {
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 0.5rem;
+  background: #f9fafb;
+}
+
+.result-title {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.result-line {
+  font-size: 0.8rem;
+  margin: 0.1rem 0;
+}
+
+.result-actions {
+  margin-top: 0.4rem;
+}
+
+/* Warnings */
+
 .warning {
   color: #c0392b;
   font-weight: bold;
+  font-size: 0.8rem;
+}
+
+/* Advanced settings */
+
+.advanced-card details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.advanced-section {
+  margin-top: 0.75rem;
+}
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.advanced-block h4 {
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.advanced-block label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.small-table input[type="number"] {
+  width: 80px;
+}
+
+/* Card utilisation tiles */
+
+.card-utilisation-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+/* Generic card tile */
+.card-tile {
+  position: relative;
+  width: 280px;
+  border-radius: 14px;
+  padding: 0.9rem 1rem 0.8rem;
+  color: #f9fafb;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+}
+
+/* Different background per bank */
+.card-tile.sbi-card {
+  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+}
+
+.card-tile.kiwi-card {
+  background: linear-gradient(135deg, #047857, #10b981);
+}
+
+/* Top row */
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.bank-logo {
+  height: 24px;
+  width: auto;
+}
+
+.card-product-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* Middle row */
+.card-middle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 0.6rem;
+}
+
+.card-left-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.card-chip {
+  width: 30px;
+  height: auto;
+  margin-bottom: 0.2rem;
+}
+
+.card-number {
+  letter-spacing: 0.12em;
   font-size: 0.85rem;
 }
 
-.small {
-  font-size: 0.85rem;
-  color: #555;
+.card-last4 {
+  font-weight: 600;
+}
+
+.card-holder-name {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.card-network-logo {
+  width: 40px;
+  height: auto;
+}
+
+/* Bottom utilisation bar on the card */
+.card-utilisation-block {
+  margin-top: 0.2rem;
+}
+
+.util-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+
+.util-bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+/* Colour states based on utilisation % */
+.util-green {
+  background: #22c55e; /* 0–30% */
+}
+.util-amber {
+  background: #facc15; /* >30–60% */
+}
+.util-orange {
+  background: #f97316; /* >60–90% */
+}
+.util-red {
+  background: #ef4444; /* >90–100% */
+}
+
+.util-bar-label {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  opacity: 0.9;
+}
+
+/* Responsive */
+
+@media (max-width: 640px) {
+  .card-tile {
+    width: 100%;
+  }
 }
